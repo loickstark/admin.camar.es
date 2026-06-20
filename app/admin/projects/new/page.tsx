@@ -92,22 +92,28 @@ async function createProjectAction(formData: FormData) {
   };
 
   try {
-    const { error } = await supabase.from('proyectos').insert({
-        id: newId,
-        project_name: { es: nombreEs, en: nombreEn },
-        slug: slug,
-        project_location: { 
-          es: formData.get('project_location_es')?.toString() || "", 
-          en: formData.get('project_location_en')?.toString() || "" 
-        },
-        type: formData.get('type') ? [formData.get('type')?.toString()] : ["Otro"],
-        project_page: projectPage,
-        main_image: mainImg
-    });
+    const projectName = { es: nombreEs, en: nombreEn };
+    const projectLocation = {
+      es: formData.get('project_location_es')?.toString() || "",
+      en: formData.get('project_location_en')?.toString() || "",
+    };
+    const typeValue = formData.get('type')?.toString();
+    const typeArr: string[] = typeValue ? [typeValue] : ["Otro"];
 
-    if (error) throw error;
+    await supabase`
+      INSERT INTO proyectos (id, project_name, slug, project_location, type, project_page, main_image)
+      VALUES (
+        ${newId},
+        ${JSON.stringify(projectName)},
+        ${slug},
+        ${JSON.stringify(projectLocation)},
+        ${typeArr},
+        ${JSON.stringify(projectPage)},
+        ${mainImg}
+      )
+    `;
   } catch (error) {
-    console.error("Error en Supabase:", error);
+    console.error("Error creando proyecto:", error);
     return;
   }
 

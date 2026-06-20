@@ -59,7 +59,7 @@ export async function deleteCDNFileAction(folder: string, fileName: string) {
  */
 export async function upsertNewsAction(formData: FormData) {
   try {
-    const data = Object.fromEntries(formData);
+    const data = Object.fromEntries(formData) as Record<string, string>;
 
     const deepParse = (val: any) => {
       if (typeof val !== 'string') return val;
