@@ -35,20 +35,23 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <SidebarNav />
 
             <div className="mt-auto border-t border-baliPearl/20 px-6 py-6">
-              <form action={logout}>
-                <button
-                  type="submit"
-                  className="mb-4 cursor-pointer text-[10px] uppercase tracking-widest text-baliPearl/60 default-transition hover:text-bubonicBrown"
-                >
-                  Cerrar sesión
-                </button>
-              </form>
               <p className="font-vollkorn text-sm italic text-baliPearl/50">Desde 1977</p>
-              {lastEditLabel && (
-                <p className="mt-1 text-[10px] uppercase tracking-wide text-baliPearl/30">
-                  Última edición: {lastEditLabel}
-                </p>
-              )}
+
+              <div className="mt-6">
+                <form action={logout}>
+                  <button
+                    type="submit"
+                    className="cursor-pointer text-[10px] uppercase tracking-widest text-baliPearl/60 default-transition hover:text-bubonicBrown"
+                  >
+                    Cerrar sesión
+                  </button>
+                </form>
+                {lastEditLabel && (
+                  <p className="mt-1 text-[10px] uppercase tracking-wide text-baliPearl/30">
+                    Última edición: {lastEditLabel}
+                  </p>
+                )}
+              </div>
             </div>
           </aside>
 
