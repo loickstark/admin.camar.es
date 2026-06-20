@@ -1,115 +1,179 @@
-// /components/admin/ProjectGalleryEditor.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
-
-interface GalleryImage {
-  src: string;
-  alt?: string;
-}
+import ImageUploader from '../ImageUploader'
+import { deleteFileFromBunny } from '@/lib/bunny-actions'
 
 interface Props {
-  initialGallery: GalleryImage[];
+  initialGallery: any[]
+  initialMain: string
+  initialBg: string
+  bunnyConfig: any
+  projectName?: string 
+  existingFolder?: string 
 }
 
-export default function ProjectGalleryEditor({ initialGallery }: Props) {
-  // Estado local para manejar las imágenes
-  const [gallery, setGallery] = useState<GalleryImage[]>(initialGallery);
-  const [newImageUrl, setNewImageUrl] = useState('');
+export default function ProjectGalleryEditor({ 
+  initialGallery, 
+  initialMain, 
+  initialBg, 
+  bunnyConfig,
+  projectName = "",
+  existingFolder
+}: Props) {
+  
+  const [gallery, setGallery] = useState(initialGallery)
+  const [mainImage, setMainImage] = useState(initialMain)
 
-  // Función para añadir una imagen
-  const addImage = () => {
-    if (newImageUrl.trim()) {
-      setGallery([...gallery, { src: newImageUrl.trim(), alt: '' }]);
-      setNewImageUrl(''); // Limpiar input
+  // 1. GESTIÓN DE CARPETAS
+  const [folderName, setFolderName] = useState(() => {
+    if (existingFolder) return existingFolder;
+    return "proyecto-sin-nombre";
+  });
+
+  const slugify = (text: string) => 
+    text.toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+  useEffect(() => {
+    if (!existingFolder && projectName && projectName.trim() !== "") {
+      setFolderName(slugify(projectName));
     }
+  }, [projectName, existingFolder]);
+
+  // 2. CONFIGURACIÓN DE RUTAS CDN
+  const CDN_BASE = bunnyConfig?.pullZone?.replace(/\/$/, '') || "https://lanzadera-digital.b-cdn.net";
+  const PULL_ZONE = CDN_BASE.includes('camar.es') ? CDN_BASE : `${CDN_BASE}/camar.es`;
+
+  const getImageUrl = (src: string) => {
+    if (!src) return '';
+    // Si ya es una URL completa (lo que acabamos de arreglar), devuélvela tal cual
+  if (src.startsWith('http')) return src;
+  
+  // Si por algún motivo solo tienes el nombre del archivo (fallback)
+  return `${PULL_ZONE}/Proyectos/${folderName}/${src}`;
   };
 
-  // Función para eliminar una imagen
-  const removeImage = (indexToRemove: number) => {
-    setGallery(gallery.filter((_, index) => index !== indexToRemove));
-  };
+  // 3. LÓGICA DE BORRADO (CDN + BBDD)
+  // 1. Necesita una nueva Server Action (ej: updateProjectGallery) 
+// que haga un UPDATE en Supabase solo del campo gallery_json.
 
-  // Función para mover imagen (reordenar)
-  const moveImage = (currentIndex: number, direction: 'up' | 'down') => {
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    
-    // Verificar límites
-    if (newIndex < 0 || newIndex >= gallery.length) return;
+const removeImage = async (index: number) => {
+  const imageToDelete = gallery[index];
+  const src = typeof imageToDelete === 'string' ? imageToDelete : imageToDelete.src;
+  const fileName = src.split('/').pop();
 
-    const newGallery = [...gallery];
-    // Intercambiar elementos
-    [newGallery[currentIndex], newGallery[newIndex]] = [newGallery[newIndex], newGallery[currentIndex]];
-    
-    setGallery(newGallery);
-  };
+  if (!window.confirm("¡Cuidado! Esto borrará la imagen del servidor y de la base de datos ahora mismo.")) return;
+
+  try {
+    // 1. Borrar de Bunny
+    const res = await deleteFileFromBunny('Proyectos', fileName, folderName);
+
+    // Si es 200 (ok) o 404 (ya no estaba), procedemos a limpiar la BBDD
+    if (res.success || res.status === 404) {
+      const newGallery = gallery.filter((_, i) => i !== index);
+      
+      // 2. Actualizar estado local
+      setGallery(newGallery);
+
+      // 3. AQUÍ DEBERÍAS LLAMAR A TU ACCIÓN DE SUPABASE
+      // await updateProjectInDB(projectId, { gallery: newGallery });
+      
+      console.log("Sincronizado: CDN y BBDD actualizados.");
+    }
+  } catch (error) {
+    alert("Error crítico de sincronización");
+  }
+};
 
   return (
-    <section className="bg-white rounded-[3rem] p-10 border border-slate-200 shadow-sm">
-      {/* Input oculto que enviará el JSON final al Server Action */}
-      <input type="hidden" name="gallery_json" value={JSON.stringify(gallery)} />
-
-      <div className="flex justify-between items-center mb-8">
-        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-          <span className="w-2 h-2 bg-pink-500 rounded-full"></span> Galería de Imágenes
+    <section className="bg-slate-50 p-8 rounded-[3rem] border border-slate-200 shadow-inner space-y-8">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 italic">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Multimedia del Proyecto
         </h3>
-        <span className="text-xs font-bold text-slate-500">{gallery.length} imágenes</span>
+        <div className="flex flex-col items-end">
+          <p className="text-[9px] font-black uppercase text-slate-400 mb-1">
+            {existingFolder ? "📁 Carpeta Heredada" : "✨ Carpeta Nueva"}
+          </p>
+          <div className={`text-[10px] font-mono px-3 py-1 rounded-full border ${existingFolder ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-blue-600 bg-blue-50 border-blue-100'}`}>
+            /camar.es/Proyectos/{folderName}/
+          </div>
+        </div>
       </div>
 
-      {/* GRID VISUAL DE IMÁGENES */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-10">
-        {gallery.map((img, i) => (
-          <div key={i} className={`group relative aspect-[4/3] rounded-3xl overflow-hidden border-2 ${i === 0 ? 'border-emerald-500 shadow-lg scale-105' : 'border-slate-100'}`}>
-            <img src={img.src} alt={`Imagen ${i+1}`} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-            
-            {/* Overlay de controles */}
-            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-white bg-black/50 px-2 py-1 rounded-full">{i + 1}</span>
-                <button 
-                  type="button" 
-                  onClick={() => removeImage(i)}
-                  className="w-7 h-7 flex items-center justify-center bg-red-500/80 rounded-full text-white text-xs hover:bg-red-600"
-                >
-                  🗑️
-                </button>
-              </div>
-              
-              <div className="flex justify-center gap-2">
-                <button type="button" onClick={() => moveImage(i, 'up')} disabled={i === 0} className="p-2 bg-white/20 rounded-lg text-white disabled:opacity-30">⬅️</button>
-                <button type="button" onClick={() => moveImage(i, 'down')} disabled={i === gallery.length - 1} className="p-2 bg-white/20 rounded-lg text-white disabled:opacity-30">➡️</button>
-              </div>
-            </div>
-
-            {i === 0 && (
-              <div className="absolute top-3 left-3 bg-emerald-500 text-[9px] font-black text-white px-3 py-1.5 rounded-full uppercase tracking-widest shadow">
-                Portada
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        {/* PORTADA */}
+        <div className="space-y-4">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Portada</label>
+          <div className="aspect-[4/5] bg-white rounded-[2rem] overflow-hidden border-2 border-slate-200 relative group shadow-md">
+            {mainImage ? (
+              <img 
+                src={getImageUrl(mainImage)} 
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                alt="Portada"
+                key={`${folderName}-${mainImage}`}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-[10px] text-slate-300 font-bold uppercase p-6 text-center italic">Esperando imagen...</div>
             )}
           </div>
-        ))}
-      </div>
+          <ImageUploader 
+              // 1. Enviamos la ruta limpia al servidor para evitar carpetas duplicadas físicamente
+              folder={`Proyectos/${folderName}` as any} 
+              label="+"
+              onUploadSuccess={(fileName) => {
+                  // CONSTRUIMOS LA URL COMPLETA AQUÍ
+                  const urlParaBBDD = `${CDN_BASE}/camar.es/Proyectos/${folderName}/${fileName}`;
+                  setMainImage(urlParaBBDD); // <--- ACTUALIZA LA PORTADA
+                  
+                  // Opcional: También añadirla a la galería si quieres
+                  setGallery(prev => [...prev, { type: 'image', src: urlParaBBDD }]);
+              }}
+            />
+          <input type="hidden" name="main_image" value={mainImage} />
+        </div>
 
-      {/* PANEL PARA AÑADIR NUEVA IMAGEN */}
-      <div className="bg-slate-50 rounded-[2rem] p-6 border border-slate-100">
-        <h4 className="text-[11px] font-black uppercase text-slate-500 mb-4 ml-2">Añadir nueva imagen (URL del CDN)</h4>
-        <div className="flex flex-col md:flex-row gap-4">
-          <input 
-            type="text" 
-            value={newImageUrl}
-            onChange={(e) => setNewImageUrl(e.target.value)}
-            placeholder="https://lanzadera-digital.b-cdn.net/..."
-            className="flex-1 p-4 bg-white rounded-2xl border border-slate-200 font-medium text-sm focus:ring-2 focus:ring-slate-900 transition"
-          />
-          <button 
-            type="button" 
-            onClick={addImage}
-            className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-black active:scale-95 transition"
-          >
-            + Añadir a Galería
-          </button>
+        {/* GALERÍA */}
+        <div className="md:col-span-3 space-y-4">
+          <label className="text-[10px] font-black uppercase text-slate-500 ml-1">Galería ({gallery.length})</label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {gallery.map((img, idx) => {
+              const src = typeof img === 'string' ? img : img.src;
+              return (
+                <div key={idx} className="aspect-square bg-white rounded-2xl overflow-hidden border border-slate-200 relative group shadow-sm">
+                  <img src={getImageUrl(src)} className="w-full h-full object-cover" alt={`Galería ${idx}`} />
+                  <button 
+                    type="button" 
+                    onClick={() => removeImage(idx)} 
+                    className="absolute inset-0 bg-red-600/90 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center font-black text-[10px] backdrop-blur-sm"
+                  >
+                    ELIMINAR PERMANENTEMENTE
+                  </button>
+                </div>
+              );
+            })}
+            
+            <div className="aspect-square bg-slate-200/50 rounded-2xl border-2 border-dashed border-slate-300 flex items-center justify-center hover:bg-slate-200 transition-colors">
+              <ImageUploader 
+                folder={`Proyectos/${folderName}` as any} 
+                label="+"
+                onUploadSuccess={(fileName) => {
+                    // CONSTRUIMOS LA URL COMPLETA AQUÍ TAMBIÉN
+                    const urlParaBBDD = `${CDN_BASE}/camar.es/Proyectos/${folderName}/${fileName}`;
+                    setGallery(prev => [...prev, { type: 'image', src: urlParaBBDD }]);
+                }}
+              />
+            </div>
+          </div>
+          <input type="hidden" name="gallery_json" value={JSON.stringify(gallery)} />
         </div>
       </div>
     </section>
-  );
+  )
 }

@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default async function EditNewsPage({ params }: Props) {
-  // 1. Esperamos a que los params se resuelvan (Obligatorio en Next 15)
+  // 1. Esperamos a que los params se resuelvan (Requisito de Next.js 15)
   const resolvedParams = await params;
   const slug = resolvedParams.slug;
 
@@ -65,7 +65,17 @@ export default async function EditNewsPage({ params }: Props) {
         {/* Decoración visual de fondo */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-bl-full -z-10 opacity-50"></div>
         
-        <NewsForm initialData={noticia} isEditing={true} />
+        {/* 
+            CORRECCIÓN CLAVE: 
+            Pasamos 'noticia.slug_es' como 'existingFolder'. 
+            Esto asegura que el NewsForm sepa que debe borrar/subir archivos 
+            en la carpeta ya existente en el CDN, ignorando cambios en el título.
+        */}
+        <NewsForm 
+          initialData={noticia} 
+          isEditing={true} 
+          existingFolder={noticia.slug_es} 
+        />
       </div>
       
       <div className="mt-8 text-center">

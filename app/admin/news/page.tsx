@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
-import { deleteNewsAction } from './actions' // Importamos la acción externa
+import DeleteNewsButton from './DeleteNewsButton' // Importamos el nuevo componente
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +30,7 @@ export default async function NewsListPage() {
           <p className="text-slate-500 text-sm font-medium">Panel de gestión de prensa y actualidad</p>
         </div>
         <Link 
-          href="/admin/news/create" // Asegúrate que esta ruta coincida con tu carpeta
+          href="/admin/news/new" 
           className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-black hover:bg-emerald-700 transition shadow-lg flex items-center gap-2 uppercase text-[10px] tracking-widest active:scale-95"
         >
           <span className="text-lg">+</span> Nueva Noticia
@@ -101,18 +100,8 @@ export default async function NewsListPage() {
                         Editar
                       </Link>
 
-                      {/* ELIMINADO EL onSubmit PARA EVITAR ERROR DE BUILD */}
-                      <form action={async (formData) => {
-                        await deleteNewsAction(formData);
-                      }}>
-                        <input type="hidden" name="slug" value={item.slug_es} />
-                        <button 
-                          type="submit"
-                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
-                        >
-                          Eliminar
-                        </button>
-                      </form>
+                      {/* Usamos el componente cliente que maneja la confirmación */}
+                      <DeleteNewsButton slug={item.slug_es} />
                     </div>
                   </td>
                 </tr>

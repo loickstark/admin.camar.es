@@ -1,53 +1,65 @@
-// /app/admin/projects/[slug]/page.tsx
 import { supabase } from '@/lib/supabase'
 import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 import ProjectMaterialsEditor from '@/components/admin/ProjectMaterialsEditor'
 import ProjectGalleryEditor from '@/components/admin/ProjectGalleryEditor'
+import { DeleteProjectButton } from '@/components/admin/DeleteProjectButton'
 
 /**
  * SERVER ACTION: ACTUALIZAR PROYECTO
+ * Corregido para reconstruir URLs absolutas de BunnyCDN y limpiar datos vacíos.
  */
 async function updateProjectAction(formData: FormData) {
   'use server'
 
-  // Convertimos a string explícitamente para evitar errores de tipo con postgres.js
   const id = formData.get('id')?.toString();
-  const slug = formData.get('slug')?.toString();
+  if (!id) return;
 
-  if (!id) {
-    console.error("ID no proporcionado");
-    return;
-  }
-
-  // 1. Recuperamos el estado actual usando postgres.js
-  // Al ser 'id' un string, el compilador ya no lanza el error de 'never'
+  // 1. OBTENER DATOS ACTUALES Y CONFIGURACIÓN
   const currentRes = await supabase`SELECT * FROM proyectos WHERE id = ${id}`;
   const current = currentRes[0];
-  const oldPageData = current?.project_page || {};
+  if (!current) return;
 
-  // 2. Procesamos la galería enviada por el componente de cliente
-  let galleryArray = oldPageData.gallery || [];
-  try {
-    const galleryInput = formData.get('gallery_json')?.toString();
-    if (galleryInput) {
-      galleryArray = JSON.parse(galleryInput);
-    }
-  } catch (e) { 
-    console.error("Error procesando JSON de galería:", e); 
+  const pullZone = process.env.PULL_ZONE_URL; // Ej: https://lanzadera-digital.b-cdn.net/camar.es
+  const fixedSlug = current.slug;
+
+  // 2. DETECTAR CARPETA DEL PROYECTO
+  let folder = "";
+  const pgOld = typeof current.project_page === 'string' ? JSON.parse(current.project_page) : (current.project_page || {});
+  
+  if (pgOld.folder) {
+    folder = pgOld.folder;
+  } else if (current.main_image) {
+    const match = current.main_image.match(/Proyectos\/([^/]+)/);
+    if (match) folder = match[1];
   }
 
-  // 3. Procesamos el campo 'type' (Postgres espera un array)
-  const typeRaw = formData.get('type')?.toString();
-  const typeArray = typeRaw 
-    ? typeRaw.split(',').map(t => t.trim()).filter(Boolean) 
-    : [];
+  // 3. PROCESAR GALERÍA (RECONSTRUCCIÓN DE URLS)
+  let galleryArray = [];
+  const galleryInput = formData.get('gallery_json')?.toString();
+  try { 
+    const parsed = galleryInput ? JSON.parse(galleryInput) : [];
+    galleryArray = parsed
+      .filter((img: any) => img.src && img.src.trim() !== "")
+      .map((img: any) => {
+        // Si la URL no es absoluta (no empieza por http), le ponemos la ruta completa
+        if (!img.src.startsWith('http')) {
+          return {
+            ...img,
+            src: `${pullZone}/Proyectos/${folder}/${img.src}`
+          };
+        }
+        return img;
+      });
+  } catch (e) { galleryArray = []; }
 
-  // 4. Construimos el nuevo objeto project_page (JSON)
+  // 4. RECONSTRUIR EL OBJETO PROJECT_PAGE (JSONB)
   const updatedProjectPage = {
-    ...oldPageData,
+    ...pgOld,
+    folder: folder, // Aseguramos persistencia de la carpeta
     gallery: galleryArray,
+    materials: JSON.parse(formData.get('materials')?.toString() || "[]"),
     pageTitle: {
       es: formData.get('title_es')?.toString() || "",
       en: formData.get('title_en')?.toString() || ""
@@ -55,192 +67,216 @@ async function updateProjectAction(formData: FormData) {
     sobreElProyecto: {
       es: formData.get('sobreElProyecto_es')?.toString() || "",
       en: formData.get('sobreElProyecto_en')?.toString() || ""
-    },
-    materials: formData.get('materials') 
-      ? JSON.parse(formData.get('materials') as string) 
-      : (oldPageData.materials || [])
+    }
   };
 
-  // 5. Update a la tabla usando sintaxis SQL pura
+  // 5. EJECUTAR UPDATE EN POSTGRES
   try {
-    // Serializamos los objetos a JSON string para las columnas JSONB
+    const finalName = JSON.stringify({ 
+      es: formData.get('project_name_es')?.toString() || "", 
+      en: formData.get('project_name_en')?.toString() || "" 
+    });
+    const finalLocation = JSON.stringify({ 
+      es: formData.get('project_location_es')?.toString() || "", 
+      en: formData.get('project_location_en')?.toString() || "" 
+    });
+
+    // Procesar Main Image (reconstruir si es solo nombre)
+    let finalMain = formData.get('main_image')?.toString() || (galleryArray.length > 0 ? galleryArray[0].src : current.main_image);
+    if (finalMain && !finalMain.startsWith('http')) {
+      finalMain = `${pullZone}/camar.es/Proyectos/${folder}/${finalMain}`;
+    }
+
     await supabase`
       UPDATE proyectos SET
-        project_name = ${JSON.stringify({
-          es: formData.get('project_name_es')?.toString() || "",
-          en: formData.get('project_name_en')?.toString() || ""
-        })},
-        title = ${JSON.stringify({
-          es: formData.get('title_es')?.toString() || "",
-          en: formData.get('title_en')?.toString() || ""
-        })},
-        project_location = ${JSON.stringify({
-          es: formData.get('project_location_es')?.toString() || "",
-          en: formData.get('project_location_en')?.toString() || ""
-        })},
-        type = ${typeArray},
-        main_image = ${galleryArray.length > 0 ? galleryArray[0].src : (current?.main_image || null)},
-        project_page = ${JSON.stringify(updatedProjectPage)}
+        project_name = ${finalName},
+        project_location = ${finalLocation},
+        project_page = ${JSON.stringify(updatedProjectPage)},
+        main_image = ${finalMain},
+        type = ${formData.get('type') ? [formData.get('type')] : (current.type || [])}
       WHERE id = ${id}
     `;
-  } catch (error: any) {
-    console.error("Error actualizando Supabase:", error.message);
+  } catch (error) {
+    console.error("Error crítico en Update:", error);
     return;
   }
 
-  // 6. Revalidación de caché
   revalidatePath('/admin/projects');
-  if (slug) {
-    revalidatePath(`/admin/projects/${slug}`);
-    revalidatePath(`/proyectos/${slug}`); 
-  }
+  revalidatePath(`/admin/projects/${fixedSlug}`);
+  revalidatePath(`/proyectos/${fixedSlug}`);
   
-  // 7. Redirección
-  redirect('/admin/projects?success=' + Date.now());
+  redirect(`/admin/projects/${fixedSlug}?updated=${Date.now()}`);
 }
 
-/**
- * SERVER ACTION: ELIMINAR PROYECTO
- */
 /**
  * SERVER ACTION: ELIMINAR PROYECTO
  */
 async function deleteProjectAction(formData: FormData) {
   'use server'
-  
-  // Convertimos a string explícitamente y validamos
   const id = formData.get('id')?.toString();
-  
-  if (!id) {
-    console.error("No se proporcionó un ID válido para eliminar");
-    return;
-  }
-  
-  try {
-    // Al ser un string, la librería ya lo acepta con seguridad
-    await supabase`DELETE FROM proyectos WHERE id = ${id}`;
-  } catch (error: any) {
-    console.error("Error eliminando:", error.message);
-    return;
-  }
-
+  if (!id) return;
+  await supabase`DELETE FROM proyectos WHERE id = ${id}`;
   revalidatePath('/admin/projects');
-  redirect('/admin/projects?deleted=' + Date.now());
+  redirect('/admin/projects');
 }
 
 /**
- * COMPONENTE DE PÁGINA (SERVER COMPONENT)
+ * PÁGINA DE EDICIÓN (SERVER COMPONENT)
  */
 export default async function EditProjectPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const decodedSlug = decodeURIComponent(rawSlug);
 
-  // Buscamos el proyecto usando postgres.js
-  const res = await supabase`SELECT * FROM proyectos WHERE slug = ${slug} LIMIT 1`;
+  const res = await supabase`
+    SELECT * FROM proyectos 
+    WHERE slug = ${decodedSlug} 
+    LIMIT 1
+  `;
   const p = res[0];
 
   if (!p) return notFound();
 
-  const pg = p.project_page || {};
-  const gallery = pg.gallery || [];
+  const parseJSON = (data: any, fallback: any) => {
+    if (!data) return fallback;
+    if (typeof data === 'object' && data !== null) return data;
+    try { return JSON.parse(data); } catch { return fallback; }
+  };
+
+  const nameData = parseJSON(p.project_name, { es: "", en: "" });
+  const locData = parseJSON(p.project_location, { es: "", en: "" });
+  const pg = parseJSON(p.project_page, {});
+  
+  const gallery = Array.isArray(pg.gallery) ? pg.gallery : [];
+  const materials = Array.isArray(pg.materials) ? pg.materials : [];
+  const pageTitle = pg.pageTitle || { es: "", en: "" };
+  const sobreElProyecto = pg.sobreElProyecto || { es: "", en: "" };
+
+  // Detección de carpeta para el componente de Galería
+  let detectedFolder = pg.folder || "";
+  if (!detectedFolder && gallery.length > 0) {
+    const firstImg = gallery[0]?.src || "";
+    const folderMatch = firstImg.match(/Proyectos\/([^/]+)/);
+    if (folderMatch) detectedFolder = folderMatch[1];
+  }
+
+  const bunnyConfig = {
+    storageZone: process.env.BUNNY_STORAGE_ZONE,
+    accessKey: process.env.BUNNY_ACCESS_KEY,
+    storageUrl: process.env.BUNNY_BASE_URL,
+    pullZone: process.env.PULL_ZONE_URL
+  };
+
+  const PROJECT_TYPES = ["Hoteles", "Vivienda Privada", "Proyectos Singulares", "Fuentes", "Proyectos Religiosos", "Otro"];
 
   return (
     <div className="max-w-6xl mx-auto p-6 pb-20">
       <form action={updateProjectAction}>
         <input type="hidden" name="id" value={p.id} />
-        <input type="hidden" name="slug" value={p.slug} />
         
-        {/* HEADER */}
         <div className="flex justify-between items-end mb-10">
-          <div>
-            <Link href="/admin/projects" className="text-slate-400 text-xs font-black uppercase mb-2 block hover:text-slate-900 transition">
-              ← Volver a Proyectos
+          <div className="space-y-2">
+            <Link href="/admin/projects" className="group flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-900 transition-colors">
+              <span className="text-lg group-hover:-translate-x-1 transition-transform">←</span> Volver al listado
             </Link>
-            <h1 className="text-5xl font-black text-slate-900 uppercase tracking-tighter leading-none">
-              {p.project_name?.es || "Editar Proyecto"}
+            <h1 className="text-5xl font-black text-slate-900 uppercase tracking-tighter leading-none italic">
+              {nameData.es || "Sin Nombre"}
             </h1>
           </div>
-          <div className="flex gap-4">
-            <button type="submit" className="bg-emerald-500 text-white px-10 py-5 rounded-2xl font-black hover:bg-emerald-600 transition shadow-xl uppercase text-[10px] tracking-widest active:scale-95">
-              Guardar Cambios Totales
-            </button>
-          </div>
+          <button type="submit" className="bg-emerald-500 text-white px-10 py-5 rounded-2xl font-black hover:bg-emerald-600 transition shadow-xl uppercase text-[10px] tracking-widest active:scale-95">
+            💾 Guardar Cambios
+          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          
-          {/* COLUMNA PRINCIPAL */}
           <div className="lg:col-span-8 space-y-10">
             
-            {/* IDENTIFICACIÓN */}
-            <section className="bg-slate-900 rounded-[3rem] p-10 text-white shadow-xl">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-2">
-                <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Identidad del Proyecto (Catálogo)
+            {/* IDENTIDAD */}
+            <section className="bg-slate-900 rounded-[3rem] p-10 text-white shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-full pointer-events-none"></div>
+              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-8 flex items-center gap-2 italic">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Identidad Principal
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Nombre del Proyecto</label>
-                  <input name="project_name_es" placeholder="ES" type="text" defaultValue={p.project_name?.es} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-white mb-2 focus:ring-2 focus:ring-emerald-500" />
-                  <input name="project_name_en" placeholder="EN" type="text" defaultValue={p.project_name?.en} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-emerald-400 focus:ring-2 focus:ring-emerald-500" />
+                  <label className="text-[10px] font-black uppercase text-slate-500 ml-2 tracking-widest">Nombre Comercial</label>
+                  <input name="project_name_es" type="text" defaultValue={nameData.es} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-white mb-2 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  <input name="project_name_en" type="text" defaultValue={nameData.en} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-emerald-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
                 </div>
                 <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase text-slate-500 ml-2">Ubicación</label>
-                  <input name="project_location_es" placeholder="ES" type="text" defaultValue={p.project_location?.es} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-white mb-2 focus:ring-2 focus:ring-emerald-500" />
-                  <input name="project_location_en" placeholder="EN" type="text" defaultValue={p.project_location?.en} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-emerald-400 focus:ring-2 focus:ring-emerald-500" />
+                  <label className="text-[10px] font-black uppercase text-slate-500 ml-2 tracking-widest">Ubicación</label>
+                  <input name="project_location_es" type="text" defaultValue={locData.es} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-white mb-2 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                  <input name="project_location_en" type="text" defaultValue={locData.en} className="w-full p-4 bg-slate-800 rounded-2xl border-none font-bold text-emerald-400 focus:ring-2 focus:ring-emerald-500 outline-none" />
                 </div>
               </div>
             </section>
 
-            {/* GALERÍA VISUAL */}
-            <ProjectGalleryEditor initialGallery={gallery} />
+            {/* GALERÍA DINÁMICA */}
+            <ProjectGalleryEditor 
+              initialGallery={gallery} 
+              initialMain={p.main_image} 
+              initialBg={pg.bg_image || ""}
+              bunnyConfig={bunnyConfig}
+              projectName={nameData.es}
+              existingFolder={detectedFolder} 
+            />
 
-            {/* TITULOS Y DESCRIPCIÓN */}
+            {/* TEXTOS Y SEO */}
             <section className="bg-white rounded-[3rem] p-10 border border-slate-200 shadow-sm space-y-8">
-              <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
-                <span className="w-2 h-2 bg-indigo-500 rounded-full"></span> Títulos y Descripción Larga (Interior)
+              <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2 italic">
+                <span className="w-2 h-2 bg-indigo-500 rounded-full"></span> Títulos y Descripción
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Título de Página (title)</label>
-                  <input name="title_es" placeholder="ES" type="text" defaultValue={p.title?.es} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold mb-2 focus:ring-2 focus:ring-slate-900" />
-                  <input name="title_en" placeholder="EN" type="text" defaultValue={p.title?.en} className="w-full p-4 bg-indigo-50/50 rounded-2xl border-none font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500" />
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Título de Página (H1)</label>
+                  <input name="title_es" type="text" defaultValue={pageTitle.es} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold mb-2 focus:ring-2 focus:ring-slate-900 outline-none" />
+                  <input name="title_en" type="text" defaultValue={pageTitle.en} className="w-full p-4 bg-indigo-50/50 rounded-2xl border-none font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 outline-none" />
                 </div>
                 <div className="space-y-4">
-                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Sobre el proyecto (Largo)</label>
-                  <textarea name="sobreElProyecto_es" placeholder="ES" rows={4} defaultValue={pg.sobreElProyecto?.es} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-medium mb-2 text-sm focus:ring-2 focus:ring-slate-900" />
-                  <textarea name="sobreElProyecto_en" placeholder="EN" rows={4} defaultValue={pg.sobreElProyecto?.en} className="w-full p-4 bg-indigo-50/50 rounded-2xl border-none font-medium text-sm text-indigo-900 focus:ring-2 focus:ring-indigo-500" />
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-2 tracking-widest">Sobre el proyecto</label>
+                  <textarea name="sobreElProyecto_es" rows={4} defaultValue={sobreElProyecto.es} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-medium text-sm focus:ring-2 focus:ring-slate-900 resize-none outline-none" />
+                  <textarea name="sobreElProyecto_en" rows={4} defaultValue={sobreElProyecto.en} className="w-full p-4 bg-indigo-50/50 rounded-2xl border-none font-medium text-sm text-indigo-900 focus:ring-2 focus:ring-indigo-500 resize-none outline-none" />
                 </div>
               </div>
             </section>
           </div>
 
-          {/* COLUMNA LATERAL */}
+          {/* LATERAL */}
           <div className="lg:col-span-4 space-y-8">
-            <ProjectMaterialsEditor initialMaterials={pg.materials || []} />
+            <ProjectMaterialsEditor initialMaterials={materials} />
 
-            <section className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-200">
-              <h3 className="text-[10px] font-black uppercase text-slate-400 mb-6 tracking-widest">Ajustes Técnicos</h3>
+            <section className="bg-slate-50 rounded-[2.5rem] p-8 border border-slate-200 shadow-inner">
+              <h3 className="text-[10px] font-black uppercase text-slate-400 mb-6 tracking-widest flex items-center gap-2">
+                ⚙️ Ajustes Técnicos
+              </h3>
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo de Proyecto (type)</label>
-                  <input name="type" type="text" defaultValue={p.type} className="w-full bg-white border-none rounded-xl p-3 font-bold text-sm shadow-sm focus:ring-2 focus:ring-slate-900" placeholder="Ej: Vivienda" />
+                  <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo de Proyecto</label>
+                  <select 
+                    name="type" 
+                    defaultValue={Array.isArray(p.type) ? p.type[0] : (p.type || "")} 
+                    className="w-full bg-white border border-slate-200 rounded-xl p-3 font-bold text-sm shadow-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {PROJECT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
-                <div className="pt-4 border-t border-slate-200 text-slate-400 space-y-1 font-mono text-[10px]">
-                  <p>ID: {p.id}</p>
-                  <p>Slug: {p.slug}</p>
+                <div className="pt-4 border-t border-slate-200 text-slate-400 space-y-1 font-mono text-[9px] break-all">
+                  <p>DATABASE ID: {p.id}</p>
+                  <p>SLUG: {p.slug}</p>
                 </div>
               </div>
             </section>
-
-            {/* BOTÓN ELIMINAR PROYECTO */}
-            <form action={deleteProjectAction} className="mt-10" onSubmit={(e) => { if(!confirm("¿Seguro que quieres eliminar este proyecto?")) e.preventDefault(); }}>
-              <input type="hidden" name="id" value={p.id} />
-              <button className="w-full p-4 rounded-2xl border-2 border-red-100 text-red-400 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">
-                Eliminar Proyecto Permanentemente
-              </button>
-            </form>
           </div>
         </div>
       </form>
+
+      {/* ZONA DE ELIMINACIÓN */}
+      <div className="mt-16 pt-10 border-t border-slate-100 flex flex-col items-center">
+        <DeleteProjectButton 
+          id={p.id} 
+          projectName={nameData.es || "este proyecto"} 
+          deleteAction={deleteProjectAction} 
+        />
+      </div>
     </div>
   )
 }

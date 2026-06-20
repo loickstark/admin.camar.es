@@ -10,29 +10,23 @@ import ImagePicker from '@/components/admin/ImagePicker'
 async function createMaterialAction(formData: FormData) {
   'use server'
 
-  // Logs de control (puedes eliminarlos tras confirmar que funciona)
-  console.log("URL DE BUNNY:", process.env.BUNNY_BASE_URL);
-  console.log("STORAGE ZONE:", process.env.BUNNY_STORAGE_ZONE);
-
   try {
     const name = formData.get('material_name') as string
     const file = formData.get('image') as File
+    const selectedType = formData.get('type_es') as string // Obtenemos el valor del dropdown
     
     let imageUrl = ''
 
     // 1. SUBIDA A BUNNY.NET (Storage API)
     if (file && file.size > 0) {
-      // Generamos nombre de archivo único y limpio (quitamos acentos y caracteres raros)
       const sanitizedName = name
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "") // Quita acentos
+        .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .trim()
         .replace(/\s+/g, '-');
         
       const fileName = `${Date.now()}-${sanitizedName}.webp`;
-      
-      // RUTA CORREGIDA: Usamos 'Materiales' con mayúscula
       const storageUrl = `${process.env.BUNNY_BASE_URL}/${process.env.BUNNY_STORAGE_ZONE}/camar.es/Materiales/${fileName}`;
 
       const response = await fetch(storageUrl, {
@@ -42,19 +36,15 @@ async function createMaterialAction(formData: FormData) {
           'Content-Type': 'application/octet-stream',
         },
         body: Buffer.from(await file.arrayBuffer()),
-        // @ts-ignore - Necesario en Node.js para streams/buffers en fetch
+        // @ts-ignore
         duplex: 'half', 
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Bunny Error:", errorText);
-        throw new Error(`Error al subir imagen a Bunny: ${response.status} - ${errorText}`);
+        throw new Error(`Error al subir imagen a Bunny: ${response.status}`);
       }
 
-      // URL PÚBLICA CORREGIDA: Usamos 'Materiales' con mayúscula
       imageUrl = `${process.env.PULL_ZONE_URL}/camar.es/Materiales/${fileName}`;
-      console.log("✅ Imagen subida con éxito:", imageUrl);
     }
 
     // 2. PREPARACIÓN DE JSON PARA NEON
@@ -68,13 +58,13 @@ async function createMaterialAction(formData: FormData) {
       en: formData.get('description_en') || ""
     });
 
+    // Guardamos el tipo seleccionado del dropdown
     const materialType = JSON.stringify({
-      es: formData.get('type_es') || "Piedra Natural",
-      en: formData.get('type_en') || "Natural Stone"
+      es: selectedType || "OTRO",
+      en: selectedType || "OTHER" // Puedes añadir un mapeo si necesitas traducción exacta
     });
 
     // 3. INSERCIÓN EN NEON (SQL)
-    // Usamos la instancia 'supabase' (que es postgres.js) con template strings
     await supabase`
       INSERT INTO materiales (
         id, 
@@ -97,20 +87,26 @@ async function createMaterialAction(formData: FormData) {
       )
     `;
 
-    console.log("✅ Material creado correctamente en Neon.");
+    console.log("✅ Material creado correctamente.");
 
   } catch (error: any) {
-    console.error("❌ ERROR CRÍTICO EN ACCIÓN:", error.message);
-    // Re-lanzamos el error para que Next.js lo capture y lo muestre en la UI si tienes un error.tsx
+    console.error("❌ ERROR EN ACCIÓN:", error.message);
     throw new Error(error.message); 
   }
 
-  // Limpiamos caché y volvemos al catálogo
   revalidatePath('/admin/materials');
+  revalidatePath('/');
   redirect('/admin/materials');
 }
 
 export default function NewMaterialPage() {
+  
+  // Opciones basadas en la imagen de referencia
+  const MATERIAL_TYPES = [
+    "MÁRMOL", "GRANITO", "CUARCITA", "ÓNIX", "TRAVERTINO", 
+    "CALIZA", "MINERAL", "ALABASTRO", "ARENISCA", "PÓRFIDO"
+  ];
+
   return (
     <form action={createMaterialAction} className="max-w-6xl mx-auto p-6 pb-20">
       
@@ -120,7 +116,7 @@ export default function NewMaterialPage() {
           <Link href="/admin/materials" className="text-slate-400 text-[10px] font-black uppercase hover:text-slate-900 mb-2 block transition-colors">
             ← Volver al Catálogo
           </Link>
-          <h1 className="text-5xl font-black text-slate-900 uppercase tracking-tighter">
+          <h1 className="text-5xl font-black text-slate-900 uppercase tracking-tighter italic">
             Nuevo Material
           </h1>
         </div>
@@ -131,13 +127,13 @@ export default function NewMaterialPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* COLUMNA IZQUIERDA: SELECTOR DE IMAGEN (Client Component) */}
+        {/* COLUMNA IZQUIERDA: IMAGEN */}
         <div className="lg:col-span-4">
-          <section className="bg-white rounded-[3rem] p-8 border border-slate-200 shadow-sm space-y-6">
+          <section className="bg-white rounded-[3rem] p-8 border border-slate-200 shadow-sm space-y-6 text-center">
             <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Imagen del Material</h3>
             <ImagePicker />
-            <p className="text-[9px] text-slate-400 text-center font-medium italic">
-              Formatos recomendados: WebP o JPG. <br/> La imagen se almacenará en Bunny Storage (Materiales).
+            <p className="text-[9px] text-slate-400 font-medium italic">
+              Formatos: WebP / JPG (Máx 1MB).
             </p>
           </section>
         </div>
@@ -145,30 +141,30 @@ export default function NewMaterialPage() {
         {/* COLUMNA DERECHA: DATOS */}
         <div className="lg:col-span-8 space-y-8">
           
-          {/* SECCIÓN IDENTIDAD */}
           <section className="bg-white rounded-[3rem] p-10 border border-slate-200 shadow-sm space-y-8">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Identidad</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest italic">1. Identidad y Clasificación</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nombre Comercial</label>
                 <input name="material_name" required type="text" placeholder="Ej: Blanco Macael" className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-slate-900" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tipo (ES)</label>
-                <input name="type_es" type="text" placeholder="Mármol" className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-slate-900" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase text-indigo-400 ml-2">Type (EN)</label>
-                <input name="type_en" type="text" placeholder="Marble" className="w-full p-4 bg-indigo-50/30 rounded-2xl border-none font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500" />
-              </div>
-            </div>
-          </section>
 
-          {/* SECCIÓN ORIGEN Y DESCRIPCIÓN */}
-          <section className="bg-white rounded-[3rem] p-10 border border-slate-200 shadow-sm space-y-8">
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Detalles</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <div className="space-y-2">
+              {/* DROPDOWN DE TIPOS INTEGRADO */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Tipo de Material</label>
+                <select 
+                  name="type_es" 
+                  required
+                  className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-slate-900 appearance-none cursor-pointer"
+                >
+                  <option value="" disabled selected>Selecciona un tipo...</option>
+                  {MATERIAL_TYPES.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Origen (ES)</label>
                 <input name="location_es" type="text" placeholder="Almería, España" className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold focus:ring-2 focus:ring-slate-900" />
               </div>
@@ -177,15 +173,18 @@ export default function NewMaterialPage() {
                 <input name="location_en" type="text" placeholder="Spain" className="w-full p-4 bg-indigo-50/30 rounded-2xl border-none font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500" />
               </div>
             </div>
+          </section>
 
+          <section className="bg-white rounded-[3rem] p-10 border border-slate-200 shadow-sm space-y-8">
+            <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest italic">2. Descripción Bilingüe</h3>
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Descripción (ES)</label>
-                <textarea name="description_es" rows={3} className="w-full p-5 bg-slate-50 rounded-[2rem] border-none font-medium focus:ring-2 focus:ring-slate-900" />
+                <textarea name="description_es" rows={3} className="w-full p-5 bg-slate-50 rounded-[2rem] border-none font-medium focus:ring-2 focus:ring-slate-900 leading-relaxed" />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-indigo-400 ml-2">Description (EN)</label>
-                <textarea name="description_en" rows={3} className="w-full p-5 bg-indigo-50/30 rounded-[2rem] border-none font-medium text-indigo-900 focus:ring-2 focus:ring-indigo-500" />
+                <textarea name="description_en" rows={3} className="w-full p-5 bg-indigo-50/30 rounded-[2rem] border-none font-medium text-indigo-900 focus:ring-2 focus:ring-indigo-500 leading-relaxed" />
               </div>
             </div>
           </section>
