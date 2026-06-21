@@ -8,6 +8,9 @@ const sql = postgres(connectionString, {
   ssl: 'require',
   idle_timeout: 20,
   max_lifetime: 60 * 30,
+  // Desactiva prepared statements: evita "cached plan must not change result type"
+  // tras cambios de esquema y problemas con el pooler de Neon (transaction mode).
+  prepare: false,
 });
 
 export { sql as supabase };

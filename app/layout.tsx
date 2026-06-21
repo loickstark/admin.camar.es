@@ -14,6 +14,7 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full antialiased">
       <head>
+        <link rel="icon" type="image/svg+xml" href="https://lanzadera-digital.b-cdn.net/camar.es/Utils/favicon.ico"/>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

@@ -26,7 +26,17 @@
       "Bash(node -e 'fetch\\(\"http://localhost:3000/login\",{cache:\"no-store\"}\\).then\\(r=>r.text\\(\\)\\).then\\(h=>console.log\\(\"HTTP ok | viewBox nuevo:\",h.includes\\(\"-586.77 -55.95 1428.8 946.37\"\\)||h.includes\\(\"-586.77 -55.95 1428.80 946.37\"\\),\"| compileError:\",/Build Error|Failed to compile/i.test\\(h\\)\\)\\)')",
       "Bash(node -e 'fetch\\(\"http://localhost:3000/login\",{cache:\"no-store\"}\\).then\\(r=>r.text\\(\\)\\).then\\(h=>{const m=h.match\\(/viewBox=\"[^\"]*\"/g\\);console.log\\(\"viewBox\\(es\\):\",m\\);console.log\\(\"preserveAspectRatio:\",/preserveAspectRatio/.test\\(h\\)\\);}\\)')",
       "Bash(awk '{print $2, $11, $12, $13}')",
-      "Bash(node -e 'fetch\\(\"http://localhost:3000/\",{redirect:\"manual\"}\\).then\\(r=>console.log\\(\"/ ->\",r.status, r.headers.get\\(\"location\"\\)||\"\\(sin redirect\\)\"\\)\\).catch\\(e=>console.log\\(\"dev server:\",e.message\\)\\)')"
+      "Bash(node -e 'fetch\\(\"http://localhost:3000/\",{redirect:\"manual\"}\\).then\\(r=>console.log\\(\"/ ->\",r.status, r.headers.get\\(\"location\"\\)||\"\\(sin redirect\\)\"\\)\\).catch\\(e=>console.log\\(\"dev server:\",e.message\\)\\)')",
+      "Bash(node inspect-proyectos.mjs)",
+      "Bash(node inspect2.mjs)",
+      "Bash(node scripts/projects-migrate.mjs)",
+      "Bash(node vcheck.mjs)",
+      "Bash(node drop-hfg.mjs)",
+      "Bash(node testq.mjs)",
+      "Bash(node schemas.mjs)",
+      "Bash(node chk.mjs)",
+      "Bash(node diag.mjs)",
+      "Bash(node fix.mjs)"
     ]
   }
 }
