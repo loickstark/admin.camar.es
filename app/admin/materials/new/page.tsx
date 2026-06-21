@@ -5,6 +5,7 @@ import { recordEdit } from '@/lib/app-meta'
 import { setFlash } from '@/lib/flash'
 import { triggerDeploy } from '@/lib/deploy-hook'
 import { MATERIAL_TYPE_ES, getMaterialTypeEn } from '@/lib/material-types'
+import { requireSession } from '@/lib/auth'
 import CreateMaterialForm from '@/components/forms/CreateMaterialForm'
 
 /**
@@ -12,6 +13,8 @@ import CreateMaterialForm from '@/components/forms/CreateMaterialForm'
  */
 async function createMaterialAction(formData: FormData) {
   'use server'
+
+  await requireSession()
 
   try {
     const name = formData.get('material_name') as string

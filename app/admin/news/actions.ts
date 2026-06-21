@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import { recordEdit } from '@/lib/app-meta'
 import { triggerDeploy } from '@/lib/deploy-hook'
 import { setFlash } from '@/lib/flash'
+import { requireSession } from '@/lib/auth'
 
 /**
  * CONFIGURACIÓN DE BUNNY CDN
@@ -47,6 +48,7 @@ async function deleteFileFromBunny(folderPath: string, fileName: string) {
  * ACCIÓN PARA BORRAR UNA IMAGEN SUELTA (Se llama desde el botón de eliminar del formulario)
  */
 export async function deleteCDNFileAction(folder: string, fileName: string) {
+  await requireSession();
   try {
     await deleteFileFromBunny(folder, fileName);
     return { success: true };
@@ -59,6 +61,7 @@ export async function deleteCDNFileAction(folder: string, fileName: string) {
  * ACCIÓN PARA CREAR/EDITAR NOTICIA
  */
 export async function upsertNewsAction(formData: FormData) {
+  await requireSession();
   try {
     const data = Object.fromEntries(formData) as Record<string, string>;
 
@@ -118,6 +121,7 @@ export async function upsertNewsAction(formData: FormData) {
  * ACCIÓN PARA ELIMINAR TODA LA NOTICIA Y SUS ARCHIVOS
  */
 export async function deleteNewsAction(formData: FormData) {
+  await requireSession();
   try {
     const id = formData.get('id') as string;
     

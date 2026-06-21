@@ -5,13 +5,16 @@ import Link from 'next/link'
 import MaterialsList, { type MaterialItem } from '@/components/admin/MaterialsList'
 import FlashNotice from '@/components/admin/FlashNotice'
 import { triggerDeploy } from '@/lib/deploy-hook'
+import { requireSession } from '@/lib/auth'
 
 /**
  * ACCIÓN PARA ELIMINAR MATERIAL (Server Action)
  */
 async function deleteMaterialAction(formData: FormData) {
   'use server'
-  
+
+  await requireSession();
+
   const id = formData.get('id') as string;
   if (!id) return;
 

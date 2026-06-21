@@ -1,19 +1,52 @@
 // /app/api/upload/route.ts
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+
+// Solo se permite subir a estas carpetas de nivel superior.
+const ALLOWED_FOLDERS = ['Materiales', 'Noticias', 'Proyectos'] as const;
+
+/**
+ * Devuelve un nombre de archivo seguro (sin rutas ni traversal) o null si no es válido.
+ */
+function safeFileName(raw: string): string | null {
+  // Nos quedamos solo con el nombre base, descartando cualquier ruta.
+  const base = raw.split('/').pop()?.split('\\').pop() ?? '';
+  if (!base || base === '.' || base === '..') return null;
+  // Solo caracteres seguros para una URL/nombre de archivo.
+  if (!/^[A-Za-z0-9._-]+$/.test(base)) return null;
+  return base;
+}
 
 export async function PUT(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const fileName = searchParams.get('file');
-  const folder = searchParams.get('folder'); // 'Materiales', 'Noticias' o 'Proyectos'
-
-  if (!fileName || !folder) {
-    return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 });
+  // 1) Exigir sesión válida. Sin esto, la ruta era pública.
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  // Configuración de Bunny (Asegúrate de tenerlos en .env.local)
-  const storageZone = process.env.BUNNY_STORAGE_ZONE || 'lanzadera-digital';
-  const accessKey = process.env.BUNNY_ACCESS_KEY || '33209c0d-1c2b-4041-9863e629e9f9-211f-4c73';
-  
+  const { searchParams } = new URL(request.url);
+  const rawFile = searchParams.get('file');
+  const folder = searchParams.get('folder'); // 'Materiales', 'Noticias' o 'Proyectos'
+
+  // 2) Validar la carpeta contra una lista blanca.
+  if (!folder || !ALLOWED_FOLDERS.includes(folder as (typeof ALLOWED_FOLDERS)[number])) {
+    return NextResponse.json({ error: 'Carpeta no válida' }, { status: 400 });
+  }
+
+  // 3) Sanear el nombre de archivo (evita path traversal tipo ../).
+  const fileName = rawFile ? safeFileName(rawFile) : null;
+  if (!fileName) {
+    return NextResponse.json({ error: 'Nombre de archivo no válido' }, { status: 400 });
+  }
+
+  // 4) Credenciales SOLO desde el entorno (sin fallback hardcodeado).
+  const storageZone = process.env.BUNNY_STORAGE_ZONE;
+  const accessKey = process.env.BUNNY_ACCESS_KEY;
+  if (!storageZone || !accessKey) {
+    console.error('Faltan BUNNY_STORAGE_ZONE / BUNNY_ACCESS_KEY');
+    return NextResponse.json({ error: 'Configuración del servidor incompleta' }, { status: 500 });
+  }
+
   // RUTA FINAL: /lanzadera-digital/camar.es/Carpeta/archivo.webp
   const bunnyUrl = `https://storage.bunnycdn.com/${storageZone}/camar.es/${folder}/${fileName}`;
 

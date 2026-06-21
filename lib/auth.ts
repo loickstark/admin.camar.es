@@ -1,5 +1,6 @@
 import 'server-only'
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { signToken, verifyToken, type SessionPayload } from './session'
 
 const COOKIE_NAME = 'session'
@@ -27,4 +28,15 @@ export async function deleteSession() {
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies()
   return verifyToken(cookieStore.get(COOKIE_NAME)?.value)
+}
+
+/**
+ * Exige una sesión válida. Si no la hay, redirige a /login y corta la ejecución.
+ * Llámalo al principio de CADA Server Action o ruta que lea/modifique datos:
+ * el middleware protege por ruta, pero esto es la defensa real a nivel de acción.
+ */
+export async function requireSession(): Promise<SessionPayload> {
+  const session = await getSession()
+  if (!session) redirect('/login')
+  return session
 }

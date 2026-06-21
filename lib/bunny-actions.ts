@@ -1,14 +1,17 @@
 // lib/bunny-actions.ts
 'use server'
 
+import { requireSession } from '@/lib/auth'
+
 /**
  * Sube un archivo a Bunny.net organizándolo por carpetas de proyecto
  */
 export async function uploadFileToBunny(
-  file: File, 
-  folder: 'Noticias' | 'Materiales' | 'Proyectos', 
+  file: File,
+  folder: 'Noticias' | 'Materiales' | 'Proyectos',
   projectSlug?: string
 ) {
+  await requireSession()
   try {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -54,6 +57,7 @@ export async function deleteFileFromBunny(
   fileName: string,
   projectSlug?: string // Añadimos el slug opcional
 ) {
+  await requireSession();
   if (!fileName) return { success: false, error: 'No filename' };
 
   // Limpiamos el fileName por si viene con una ruta completa (solo queremos el nombre final)

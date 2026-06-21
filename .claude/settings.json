@@ -40,7 +40,15 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('deps:'\\); [print\\(' ',k,v\\) for k,v in d.get\\('dependencies',{}\\).items\\(\\)]; print\\('devDeps:'\\); [print\\(' ',k,v\\) for k,v in d.get\\('devDependencies',{}\\).items\\(\\)]\")",
       "Bash(grep -nA2 \"content:\" lib/seed-noticias.ts)",
       "Bash(npx next *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(grep -rn -iE \"\\(accessKey|api_key|apikey|secret|password|token\\)\\\\s*[:=]\\\\s*['\\\\\"][A-Za-z0-9_-]{12,}\" --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.mjs\" .)",
+      "Bash(grep -rnE \"sql\\\\.unsafe|supabase\\\\.unsafe|\\\\\\\\\\\\$\\\\{.*\\\\}.*FROM|query\\\\\\(\" --include=\"*.ts\" --include=\"*.tsx\" .)",
+      "Bash(node scripts/_rl-check.mjs)",
+      "Bash(node scripts/seed-admin.mjs correo-malo \"pass12345\")",
+      "Bash(echo \"\\(exit $?\\)\")",
+      "Bash(node scripts/seed-admin.mjs nuevo@correo.com \"1234\")",
+      "Bash(node scripts/seed-admin.mjs --help)",
+      "Bash(node scripts/seed-admin.mjs xx)"
     ]
   }
 }

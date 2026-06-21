@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto'
 import { recordEdit } from '@/lib/app-meta'
 import { triggerDeploy } from '@/lib/deploy-hook'
 import { setFlash } from '@/lib/flash'
+import { requireSession } from '@/lib/auth'
 
 const parseJSON = <T,>(value: FormDataEntryValue | null, fallback: T): T => {
   try {
@@ -34,6 +35,7 @@ export async function upsertProjectAction(
   _prev: ProjectActionState,
   formData: FormData,
 ): Promise<ProjectActionState> {
+  await requireSession()
   const id = (formData.get('id') as string) || ''
   const str = (k: string) => ((formData.get(k) as string) || '').trim()
   const bilingual = (k: string) => ({ es: str(`${k}_es`), en: str(`${k}_en`) })
@@ -114,6 +116,7 @@ export async function upsertProjectAction(
 }
 
 export async function deleteProjectAction(formData: FormData) {
+  await requireSession()
   const id = formData.get('id')?.toString()
   if (!id) return
 

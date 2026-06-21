@@ -10,6 +10,7 @@ import { recordEdit } from '@/lib/app-meta'
 import { setFlash } from '@/lib/flash'
 import { triggerDeploy } from '@/lib/deploy-hook'
 import { MATERIAL_TYPES, getMaterialTypeEn, resolveMaterialTypeEs } from '@/lib/material-types'
+import { requireSession } from '@/lib/auth'
 
 /**
  * 1. FUNCIÓN AUXILIAR PARA BORRAR EN BUNNY.NET
@@ -43,6 +44,8 @@ async function deleteFromBunny(oldImageUrl: string) {
  */
 async function updateMaterialAction(formData: FormData) {
   'use server'
+
+  await requireSession();
 
   const id = formData.get('id') as string;
   const name = formData.get('material_name') as string;
