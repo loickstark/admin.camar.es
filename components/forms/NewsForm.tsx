@@ -1,10 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { upsertNewsAction } from '@/app/admin/news/actions'
 import ImageUploader from '../ImageUploader'
 import { deleteFileFromBunny } from '@/lib/bunny-actions'
+import AdminLink from '@/components/admin/AdminLink'
+import UnsavedChangesGuard from '@/components/admin/UnsavedChangesGuard'
+import MarkdownEditor from '@/components/admin/MarkdownEditor'
+import { useNotifications } from '@/components/admin/NotificationProvider'
 
 interface Props {
   initialData?: any
@@ -14,12 +18,10 @@ interface Props {
 
 export default function NewsForm({ initialData, isEditing, existingFolder }: Props) {
   const router = useRouter()
+  const { notify } = useNotifications()
   const [loading, setLoading] = useState(false)
 
   const PULL_ZONE = "https://lanzadera-digital.b-cdn.net"
-
-  // 1. PRIORIDAD ABSOLUTA: folder_custom de la base de datos
-  const [folderName, setFolderName] = useState(initialData?.folder_custom || existingFolder || '');
 
   const parseSafe = (data: any, fallback: any) => {
     if (!data) return fallback;
@@ -50,19 +52,18 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
       .replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-')
       .replace(/^-+|-+$/g, '');
 
-  // 2. SOLO GENERAR FOLDER SI ES NUEVA NOTICIA
-  useEffect(() => {
-    if (isEditing || folderName) return;
-    if (formData.title.es) {
-      setFolderName(slugify(formData.title.es));
-    }
-  }, [formData.title.es, isEditing, folderName]);
+  // Carpeta de assets en la CDN.
+  // - Edición: fija (folder_custom de la BD), no cambia aunque se renombre.
+  // - Creación: sigue al slug en vivo, así la subida y la previsualización
+  //   apuntan SIEMPRE a la misma ruta (y al guardar, folder_custom == slug_es).
+  const folder = isEditing
+    ? (initialData?.folder_custom || existingFolder || '')
+    : formData.slug_es;
 
-  // 3. RUTA DE IMAGEN: Usa folderName que es folder_custom
   const getImageUrl = (fileName: string) => {
     if (!fileName) return '';
     if (fileName.startsWith('http')) return fileName;
-    const path = folderName || slugify(formData.title.es) || 'temp';
+    const path = folder || 'temp';
     return `${PULL_ZONE}/camar.es/Noticias/${path}/${fileName}`;
   };
 
@@ -74,22 +75,40 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
     }));
   }
 
-  const handleDeleteImage = async (fileName: string, isGallery: boolean, index?: number) => {
-    if (!confirm("¿Borrar permanentemente del CDN?")) return;
-    try {
-      const res = await deleteFileFromBunny('Noticias', fileName, folderName);
-      if (res.success || res.status === 404) {
-        if (isGallery && index !== undefined) {
-          const newGallery = [...formData.gallery];
-          newGallery.splice(index, 1);
-          setFormData(prev => ({ ...prev, gallery: newGallery }));
-        } else {
-          setFormData(prev => ({ ...prev, main_image: '' }));
-        }
-      }
-    } catch (error) {
-      alert("Error al borrar");
-    }
+  const handleDeleteImage = (fileName: string, isGallery: boolean, index?: number) => {
+    notify({
+      tone: 'confirm',
+      dismissible: false,
+      message: isGallery ? '¿Eliminar esta imagen de la galería?' : '¿Eliminar la portada?',
+      description: 'Se borrará permanentemente del CDN. Esta acción no se puede deshacer.',
+      actions: [
+        {
+          label: 'Eliminar',
+          variant: 'danger',
+          onClick: async () => {
+            try {
+              const res = await deleteFileFromBunny('Noticias', fileName, folder);
+              if (res.success || res.status === 404) {
+                if (isGallery && index !== undefined) {
+                  setFormData(prev => {
+                    const newGallery = [...prev.gallery];
+                    newGallery.splice(index, 1);
+                    return { ...prev, gallery: newGallery };
+                  });
+                } else {
+                  setFormData(prev => ({ ...prev, main_image: '' }));
+                }
+              } else {
+                notify({ tone: 'error', message: 'No se pudo borrar la imagen' });
+              }
+            } catch {
+              notify({ tone: 'error', message: 'Error al borrar la imagen' });
+            }
+          },
+        },
+        { label: 'Cancelar', variant: 'ghost' },
+      ],
+    });
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,7 +122,7 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
       data.append('slug_en', formData.slug_en || slugify(formData.title.en || formData.slug_es))
 
       // 4. GUARDAR EXPLÍCITAMENTE folder_custom
-      data.append('folder_custom', folderName)
+      data.append('folder_custom', folder)
 
       data.append('date', formData.date)
       data.append('main_image', formData.main_image)
@@ -123,16 +142,33 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-10 pb-32">
+    <form onSubmit={handleSubmit} className="mx-auto max-w-6xl space-y-10 pb-20">
+      <UnsavedChangesGuard />
 
-      {/* INFO RUTA - Debug Visual */}
-      <section className="rounded-xl border border-secondaryBlack bg-dynamicBlack p-6">
+      {/* HEADER */}
+      <div className="flex items-end justify-between gap-6">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.3em] text-baliPearl/50">
-            Storage Path (folder_custom)
-          </p>
-          <p className="mt-1 font-mono text-xs text-bubonicBrown">/Noticias/{folderName || 'generando...'}/</p>
+          <AdminLink href="/admin/news" className="mb-4 block text-xs uppercase tracking-widest text-dynamicBlack/50 default-transition hover:text-bubonicBrown">
+            Volver al listado
+          </AdminLink>
+          <h1 className="font-vollkorn text-3xl uppercase leading-tight tracking-tight text-dynamicBlack">
+            {isEditing ? (initialData?.title?.es || 'Editar noticia') : 'Nueva noticia'}
+          </h1>
         </div>
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? 'Guardando...' : (isEditing ? 'Actualizar noticia' : 'Publicar noticia')}
+        </button>
+      </div>
+
+      {/* FECHA DE PUBLICACIÓN */}
+      <section className="card">
+        <label className="label">Fecha de publicación</label>
+        <input
+          type="date"
+          className="input max-w-xs"
+          value={formData.date}
+          onChange={e => setFormData({...formData, date: e.target.value})}
+        />
       </section>
 
       {/* MULTIMEDIA */}
@@ -141,26 +177,32 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
 
           <div className="space-y-4 lg:col-span-1">
             <label className="label">Portada</label>
-            <div className="group relative aspect-4/5 overflow-hidden rounded-xl border border-dynamicBlack/10 bg-white">
-              {formData.main_image ? (
-                <>
-                  <img src={getImageUrl(formData.main_image)} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Main" />
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteImage(formData.main_image, false)}
-                    className="absolute inset-0 flex flex-col items-center justify-center bg-red-600/90 text-baliPearl opacity-0 default-transition group-hover:opacity-100"
-                  >
-                    <span className="text-xs font-bold uppercase tracking-wide">Eliminar archivo</span>
-                  </button>
-                </>
-              ) : (
-                <div className="flex h-full items-center justify-center p-10 text-center text-[10px] uppercase italic leading-relaxed text-dynamicBlack/30">Sube la portada principal</div>
-              )}
-            </div>
-            <ImageUploader
-              folder={`Noticias/${folderName}` as any}
-              onUploadSuccess={(file) => setFormData({...formData, main_image: file})}
-            />
+            {formData.main_image ? (
+              <div className="group relative aspect-4/5 overflow-hidden rounded-xl border border-dynamicBlack/10 bg-white">
+                <img src={getImageUrl(formData.main_image)} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" alt="Main" />
+                <button
+                  type="button"
+                  onClick={() => handleDeleteImage(formData.main_image, false)}
+                  className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center bg-red-600/90 text-baliPearl opacity-0 default-transition group-hover:opacity-100"
+                >
+                  <span className="text-xs font-bold uppercase tracking-wide">Eliminar archivo</span>
+                </button>
+              </div>
+            ) : (
+              <div className="aspect-4/5">
+                {folder ? (
+                  <ImageUploader
+                    folder={`Noticias/${folder}` as any}
+                    label="Sube la portada principal"
+                    onUploadSuccess={(file) => setFormData(prev => ({ ...prev, main_image: file }))}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-md border-2 border-dashed border-dynamicBlack/15 p-6 text-center text-[10px] uppercase italic leading-relaxed text-dynamicBlack/40">
+                    Escribe primero el título de la noticia para poder subir la portada
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-4 lg:col-span-3">
@@ -174,7 +216,7 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
                     <button
                       type="button"
                       onClick={() => handleDeleteImage(src, true, idx)}
-                      className="absolute inset-0 flex items-center justify-center bg-red-600/95 text-[9px] font-bold uppercase tracking-wide text-baliPearl opacity-0 default-transition group-hover:opacity-100"
+                      className="absolute inset-0 flex cursor-pointer items-center justify-center bg-red-600/95 text-[9px] font-bold uppercase tracking-wide text-baliPearl opacity-0 default-transition group-hover:opacity-100"
                     >
                       Borrar
                     </button>
@@ -182,11 +224,17 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
                 )
               })}
               <div className="aspect-square">
-                <ImageUploader
-                  folder={`Noticias/${folderName}` as any}
-                  label="+"
-                  onUploadSuccess={(file) => setFormData({...formData, gallery: [...formData.gallery, { src: file, type: 'image' }]})}
-                />
+                {folder ? (
+                  <ImageUploader
+                    folder={`Noticias/${folder}` as any}
+                    label="+"
+                    onUploadSuccess={(file) => setFormData(prev => ({...prev, gallery: [...prev.gallery, { src: file, type: 'image' }]}))}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-md border-2 border-dashed border-dynamicBlack/15 p-2 text-center text-[9px] uppercase italic leading-tight text-dynamicBlack/40">
+                    Añade un título primero
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -201,20 +249,30 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
             <span className="h-3 w-3 rounded-full bg-bubonicBrown"></span>
             <span className="font-vollkorn text-sm uppercase tracking-widest text-dynamicBlack/60">Castellano</span>
           </div>
-          <input
-            placeholder="Título de la noticia..."
-            className="w-full border-0 border-b-2 border-dynamicBlack/10 bg-transparent pb-4 font-vollkorn text-4xl text-dynamicBlack outline-none default-transition placeholder:text-dynamicBlack/20 focus:border-bubonicBrown"
-            value={formData.title.es}
-            onChange={(e) => handleTitleChange(e.target.value)}
-            required
-          />
           <div>
-            <label className="label">Contenido (Markdown)</label>
-            <textarea
-              placeholder="Cuerpo de la noticia..."
-              className="input min-h-120 leading-relaxed"
+            <input
+              placeholder="Título de la noticia..."
+              className={`w-full border-0 border-b-2 border-dynamicBlack/10 bg-transparent pb-4 font-vollkorn text-lg outline-none default-transition placeholder:text-dynamicBlack/20 focus:border-bubonicBrown ${
+                isEditing ? 'cursor-not-allowed text-dynamicBlack/50' : 'text-dynamicBlack'
+              }`}
+              value={formData.title.es}
+              onChange={(e) => handleTitleChange(e.target.value)}
+              readOnly={isEditing}
+              title={isEditing ? 'El título no se puede cambiar una vez publicada la noticia' : undefined}
+              required
+            />
+            {isEditing && (
+              <p className="mt-2 text-[11px] italic text-dynamicBlack/40">
+                El título no se puede modificar una vez publicada la noticia.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="label">Contenido</label>
+            <MarkdownEditor
               value={formData.content.es}
-              onChange={(e) => setFormData({...formData, content: {...formData.content, es: e.target.value}})}
+              placeholder="Cuerpo de la noticia..."
+              onChange={(val) => setFormData(prev => ({...prev, content: {...prev.content, es: val}}))}
             />
           </div>
         </section>
@@ -225,51 +283,34 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
             <span className="h-3 w-3 rounded-full bg-dynamicBlack"></span>
             <span className="font-vollkorn text-sm uppercase tracking-widest text-dynamicBlack/60">English</span>
           </div>
-          <input
-            placeholder="News headline..."
-            className="w-full border-0 border-b-2 border-dynamicBlack/10 bg-transparent pb-4 font-vollkorn text-4xl text-dynamicBlack outline-none default-transition placeholder:text-dynamicBlack/20 focus:border-dynamicBlack"
-            value={formData.title.en}
-            onChange={(e) => setFormData({...formData, title: {...formData.title, en: e.target.value}})}
-          />
           <div>
-            <label className="label">Content (Markdown)</label>
-            <textarea
-              placeholder="News body content..."
-              className="input min-h-120 leading-relaxed"
+            <input
+              placeholder="News headline..."
+              className={`w-full border-0 border-b-2 border-dynamicBlack/10 bg-transparent pb-4 font-vollkorn text-lg outline-none default-transition placeholder:text-dynamicBlack/20 focus:border-dynamicBlack ${
+                isEditing ? 'cursor-not-allowed text-dynamicBlack/50' : 'text-dynamicBlack'
+              }`}
+              value={formData.title.en}
+              onChange={(e) => setFormData({...formData, title: {...formData.title, en: e.target.value}})}
+              readOnly={isEditing}
+              title={isEditing ? 'El título no se puede cambiar una vez publicada la noticia' : undefined}
+            />
+            {isEditing && (
+              <p className="mt-2 text-[11px] italic text-dynamicBlack/40">
+                The title can&apos;t be changed once the article is published.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="label">Content</label>
+            <MarkdownEditor
               value={formData.content.en}
-              onChange={(e) => setFormData({...formData, content: {...formData.content, en: e.target.value}})}
+              placeholder="News body content..."
+              onChange={(val) => setFormData(prev => ({...prev, content: {...prev.content, en: val}}))}
             />
           </div>
         </section>
       </div>
 
-      {/* FECHA Y SLUG */}
-      <section className="grid grid-cols-1 gap-8 rounded-xl border border-secondaryBlack bg-dynamicBlack p-10 md:grid-cols-2">
-        <div>
-          <label className="label text-baliPearl/50!">Slug English (SEO)</label>
-          <input
-            className="w-full rounded-md border border-secondaryBlack bg-secondaryBlack/50 p-4 font-mono text-sm text-bubonicBrown outline-none default-transition focus:border-bubonicBrown"
-            value={formData.slug_en}
-            onChange={e => setFormData({...formData, slug_en: slugify(e.target.value)})}
-          />
-        </div>
-        <div>
-          <label className="label text-baliPearl/50!">Fecha de publicación</label>
-          <input
-            type="date"
-            className="w-full rounded-md border border-secondaryBlack bg-secondaryBlack/50 p-4 text-sm text-baliPearl outline-none default-transition focus:border-bubonicBrown scheme-dark"
-            value={formData.date}
-            onChange={e => setFormData({...formData, date: e.target.value})}
-          />
-        </div>
-      </section>
-
-      {/* BOTÓN FLOTANTE */}
-      <div className="fixed bottom-10 left-1/2 z-100 w-full max-w-md -translate-x-1/2 px-8">
-        <button type="submit" disabled={loading} className="btn-gold w-full py-4 text-lg shadow-2xl">
-          {loading ? 'Guardando cambios...' : (isEditing ? 'Actualizar noticia' : 'Publicar noticia')}
-        </button>
-      </div>
     </form>
   )
 }

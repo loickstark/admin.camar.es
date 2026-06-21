@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { DeleteProjectButton } from '@/components/admin/DeleteProjectButton'
+import FlashNotice from '@/components/admin/FlashNotice'
 import { deleteNewsAction } from './actions'
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,12 @@ export default async function NewsListPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <FlashNotice
+        messages={{
+          'news-created': 'Noticia creada con éxito',
+          'news-updated': 'Noticia actualizada con éxito',
+        }}
+      />
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
@@ -73,8 +80,8 @@ export default async function NewsListPage() {
                   </td>
 
                   <td className="max-w-xs p-6">
-                    <div className="flex flex-col">
-                      <span className="font-vollkorn text-lg leading-tight text-dynamicBlack">
+                    <div className="flex min-w-0 flex-col">
+                      <span className="line-clamp-1 font-vollkorn text-lg leading-tight text-dynamicBlack">
                         {item.title?.es || item.title}
                       </span>
                       <span className="mt-1 line-clamp-1 text-sm text-dynamicBlack/50">

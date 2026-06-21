@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { recordEdit } from '@/lib/app-meta'
 import { triggerDeploy } from '@/lib/deploy-hook'
+import { setFlash } from '@/lib/flash'
 
 /**
  * CONFIGURACIÓN DE BUNNY CDN
@@ -74,7 +75,9 @@ export async function upsertNewsAction(formData: FormData) {
     const content = deepParse(data.content);
     const gallery = deepParse(data.gallery) || [];
 
-    if (data.id && data.id !== '') {
+    const isUpdate = Boolean(data.id && data.id !== '');
+
+    if (isUpdate) {
       await supabase`
         UPDATE noticias SET 
           title = ${title},
@@ -102,6 +105,7 @@ export async function upsertNewsAction(formData: FormData) {
 
     await recordEdit();
     await triggerDeploy();
+    await setFlash(isUpdate ? 'news-updated' : 'news-created');
     revalidatePath('/admin/news');
     return { success: true };
   } catch (error: any) {

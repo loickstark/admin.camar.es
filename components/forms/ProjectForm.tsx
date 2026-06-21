@@ -197,7 +197,7 @@ export default function ProjectForm({ initialData, materialSuggestions }: Props)
             onChange={(e) => setShowOnProjects(e.target.checked)}
             className="h-4 w-4 accent-dynamicBlack"
           />
-          Tiene página de proyecto (se muestra la card en el front)
+          Tiene página de proyecto
         </label>
       </section>
 
@@ -222,7 +222,6 @@ export default function ProjectForm({ initialData, materialSuggestions }: Props)
             <textarea name="about_en" rows={6} defaultValue={d.about_the_project?.en || ''} className="input leading-relaxed" />
           </div>
         </div>
-        <p className="text-[10px] italic text-dynamicBlack/40">Se admite HTML básico (p. ej. &lt;br&gt;).</p>
       </section>
 
       {/* DETALLES + MÁS INFORMACIÓN */}

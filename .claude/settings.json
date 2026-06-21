@@ -36,7 +36,11 @@
       "Bash(node schemas.mjs)",
       "Bash(node chk.mjs)",
       "Bash(node diag.mjs)",
-      "Bash(node fix.mjs)"
+      "Bash(node fix.mjs)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('deps:'\\); [print\\(' ',k,v\\) for k,v in d.get\\('dependencies',{}\\).items\\(\\)]; print\\('devDeps:'\\); [print\\(' ',k,v\\) for k,v in d.get\\('devDependencies',{}\\).items\\(\\)]\")",
+      "Bash(grep -nA2 \"content:\" lib/seed-noticias.ts)",
+      "Bash(npx next *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }
