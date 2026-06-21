@@ -9,6 +9,7 @@ import AdminLink from '@/components/admin/AdminLink'
 import UnsavedChangesGuard from '@/components/admin/UnsavedChangesGuard'
 import MarkdownEditor from '@/components/admin/MarkdownEditor'
 import { useNotifications } from '@/components/admin/NotificationProvider'
+import { Spinner } from '@/components/admin/Spinner'
 
 interface Props {
   initialData?: any
@@ -155,8 +156,9 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
             {isEditing ? (initialData?.title?.es || 'Editar noticia') : 'Nueva noticia'}
           </h1>
         </div>
-        <button type="submit" disabled={loading} className="btn-primary">
-          {loading ? 'Guardando...' : (isEditing ? 'Actualizar noticia' : 'Publicar noticia')}
+        <button type="submit" disabled={loading} aria-busy={loading} className="btn-primary">
+          {loading && <Spinner />}
+          {loading ? 'Guardando…' : (isEditing ? 'Actualizar noticia' : 'Publicar noticia')}
         </button>
       </div>
 

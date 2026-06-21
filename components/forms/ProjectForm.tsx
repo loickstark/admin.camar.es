@@ -9,6 +9,7 @@ import MaterialsCombobox from '@/components/admin/MaterialsCombobox'
 import RepeaterEditor from '@/components/admin/RepeaterEditor'
 import ProjectDetailsEditor from '@/components/admin/ProjectDetailsEditor'
 import { DeleteProjectButton } from '@/components/admin/DeleteProjectButton'
+import { Spinner } from '@/components/admin/Spinner'
 import { upsertProjectAction, deleteProjectAction, type ProjectActionState } from '@/app/admin/projects/actions'
 import { PROJECT_TYPES, PROJECT_FILTERS } from '@/lib/project-types'
 
@@ -127,8 +128,9 @@ export default function ProjectForm({ initialData, materialSuggestions }: Props)
           {isEditing && (
             <DeleteProjectButton id={d.id} projectName={d.title?.es || 'este proyecto'} deleteAction={deleteProjectAction} />
           )}
-          <button type="submit" disabled={pending} className="btn-primary">
-            {pending ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Crear proyecto'}
+          <button type="submit" disabled={pending} aria-busy={pending} className="btn-primary">
+            {pending && <Spinner />}
+            {pending ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Crear proyecto'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import ImagePicker from '@/components/admin/ImagePicker'
 import MaterialUsesEditor from '@/components/admin/MaterialUsesEditor'
+import { SubmitButton } from '@/components/admin/SubmitButton'
 
 interface Props {
   action: (formData: FormData) => void | Promise<void>
@@ -129,9 +130,7 @@ export default function CreateMaterialForm({ action, materialTypes, existingName
             Nuevo material
           </h1>
         </div>
-        <button type="submit" className="btn-primary">
-          Crear material
-        </button>
+        <SubmitButton pendingLabel="Creando…">Crear material</SubmitButton>
       </div>
 
       {hasErrors && (

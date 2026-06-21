@@ -5,6 +5,7 @@ import MaterialUsesEditor from '@/components/admin/MaterialUsesEditor'
 import ImagePicker from '@/components/admin/ImagePicker'
 import AdminLink from '@/components/admin/AdminLink'
 import UnsavedChangesGuard from '@/components/admin/UnsavedChangesGuard'
+import { SubmitButton } from '@/components/admin/SubmitButton'
 import { recordEdit } from '@/lib/app-meta'
 import { setFlash } from '@/lib/flash'
 import { triggerDeploy } from '@/lib/deploy-hook'
@@ -183,9 +184,7 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ s
             Editar: {m.material_name}
           </h1>
         </div>
-        <button type="submit" className="btn-primary">
-          Guardar cambios
-        </button>
+        <SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton>
       </div>
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
