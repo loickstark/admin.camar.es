@@ -17,6 +17,26 @@ function safeFileName(raw: string): string | null {
   return base;
 }
 
+/**
+ * Valida la carpeta destino permitiendo subcarpetas (p. ej. "Noticias/mi-slug").
+ * Exige que el primer segmento esté en la lista blanca y que cada segmento sea
+ * seguro (sin traversal "../" ni caracteres extraños). Devuelve la ruta saneada
+ * o null si no es válida.
+ */
+function safeFolder(raw: string | null): string | null {
+  if (!raw) return null;
+  const segments = raw.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  // El primer segmento debe ser una carpeta de nivel superior permitida.
+  if (!ALLOWED_FOLDERS.includes(segments[0] as (typeof ALLOWED_FOLDERS)[number])) return null;
+  // Cada segmento (incluida la subcarpeta del slug) debe ser seguro.
+  for (const segment of segments) {
+    if (segment === '.' || segment === '..') return null;
+    if (!/^[A-Za-z0-9._-]+$/.test(segment)) return null;
+  }
+  return segments.join('/');
+}
+
 export async function PUT(request: Request) {
   // 1) Exigir sesión válida. Sin esto, la ruta era pública.
   const session = await getSession();
@@ -26,10 +46,11 @@ export async function PUT(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const rawFile = searchParams.get('file');
-  const folder = searchParams.get('folder'); // 'Materiales', 'Noticias' o 'Proyectos'
+  const rawFolder = searchParams.get('folder'); // p. ej. 'Noticias' o 'Noticias/mi-slug'
 
-  // 2) Validar la carpeta contra una lista blanca.
-  if (!folder || !ALLOWED_FOLDERS.includes(folder as (typeof ALLOWED_FOLDERS)[number])) {
+  // 2) Validar la carpeta (lista blanca en el primer segmento + subcarpeta segura).
+  const folder = safeFolder(rawFolder);
+  if (!folder) {
     return NextResponse.json({ error: 'Carpeta no válida' }, { status: 400 });
   }
 

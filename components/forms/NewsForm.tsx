@@ -68,6 +68,9 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
     return `${PULL_ZONE}/camar.es/Noticias/${path}/${fileName}`;
   };
 
+  // Detecta si un archivo de la galería es un vídeo por su extensión.
+  const isVideoFile = (fileName: string) => /\.(mp4|webm|ogg|ogv|mov|m4v)$/i.test(fileName || '');
+
   const handleTitleChange = (val: string) => {
     setFormData(prev => ({
       ...prev,
@@ -80,7 +83,7 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
     notify({
       tone: 'confirm',
       dismissible: false,
-      message: isGallery ? '¿Eliminar esta imagen de la galería?' : '¿Eliminar la portada?',
+      message: isGallery ? '¿Eliminar este archivo de la galería?' : '¿Eliminar la portada?',
       description: 'Se borrará permanentemente del CDN. Esta acción no se puede deshacer.',
       actions: [
         {
@@ -208,13 +211,21 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
           </div>
 
           <div className="space-y-4 lg:col-span-3">
-            <label className="label">Galería de imágenes</label>
+            <label className="label">Galería</label>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
               {formData.gallery.map((item: any, idx: number) => {
                 const src = typeof item === 'string' ? item : item.src;
+                const isVideo = (typeof item === 'object' && item?.type === 'video') || isVideoFile(src);
                 return (
                   <div key={idx} className="group relative aspect-square overflow-hidden rounded-md border border-dynamicBlack/10 bg-white">
-                    <img src={getImageUrl(src)} className="h-full w-full object-cover" alt={`Gal ${idx}`} />
+                    {isVideo ? (
+                      <>
+                        <video src={getImageUrl(src)} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                        <span className="pointer-events-none absolute left-1 top-1 rounded bg-dynamicBlack/70 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-baliPearl">Vídeo</span>
+                      </>
+                    ) : (
+                      <img src={getImageUrl(src)} className="h-full w-full object-cover" alt={`Gal ${idx}`} />
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDeleteImage(src, true, idx)}
@@ -230,7 +241,8 @@ export default function NewsForm({ initialData, isEditing, existingFolder }: Pro
                   <ImageUploader
                     folder={`Noticias/${folder}` as any}
                     label="+"
-                    onUploadSuccess={(file) => setFormData(prev => ({...prev, gallery: [...prev.gallery, { src: file, type: 'image' }]}))}
+                    accept="image/*,video/*"
+                    onUploadSuccess={(file) => setFormData(prev => ({...prev, gallery: [...prev.gallery, { src: file, type: isVideoFile(file) ? 'video' : 'image' }]}))}
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center rounded-md border-2 border-dashed border-dynamicBlack/15 p-2 text-center text-[9px] uppercase italic leading-tight text-dynamicBlack/40">

@@ -6,9 +6,11 @@ interface Props {
   folder: 'Materiales' | 'Noticias' | 'Proyectos'
   onUploadSuccess: (fileName: string) => void
   label?: string
+  // Restringe el tipo de archivo del selector (p. ej. "image/*" o "image/*,video/*").
+  accept?: string
 }
 
-export default function ImageUploader({ folder, onUploadSuccess, label }: Props) {
+export default function ImageUploader({ folder, onUploadSuccess, label, accept }: Props) {
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success'>('idle')
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,6 +28,7 @@ export default function ImageUploader({ folder, onUploadSuccess, label }: Props)
       const res = await fetch(`/api/upload?file=${cleanName}&folder=${folder}`, {
         method: 'PUT',
         body: file,
+        credentials: 'same-origin', // envía la cookie de sesión
       })
 
       if (res.ok) {
@@ -33,10 +36,14 @@ export default function ImageUploader({ folder, onUploadSuccess, label }: Props)
         onUploadSuccess(cleanName)
         setTimeout(() => setStatus('idle'), 3000)
       } else {
-        alert("Error en la subida")
+        let detail = ''
+        try { detail = (await res.json())?.error ?? '' } catch {}
+        console.error('Fallo en la subida', res.status, detail)
+        alert(`Error en la subida (${res.status})${detail ? `: ${detail}` : ''}`)
         setStatus('idle')
       }
     } catch (err) {
+      console.error('Error de conexión en la subida', err)
       setStatus('idle')
       alert("Error de conexión")
     }
@@ -47,7 +54,7 @@ export default function ImageUploader({ folder, onUploadSuccess, label }: Props)
       ${status === 'uploading' ? 'border-bubonicBrown bg-bubonicBrown/5' :
         status === 'success' ? 'border-green-500 bg-green-50' : 'border-dynamicBlack/15 bg-white hover:bg-secondaryGray'}`}>
 
-      <input type="file" className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} disabled={status === 'uploading'} />
+      <input type="file" accept={accept} className="absolute inset-0 cursor-pointer opacity-0" onChange={handleUpload} disabled={status === 'uploading'} />
 
       <div className="text-center">
         {status === 'idle' && (
